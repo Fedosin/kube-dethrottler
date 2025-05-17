@@ -1,0 +1,52 @@
+GO_CMD=go
+GO_BUILD=$(GO_CMD) build
+GO_TEST=$(GO_CMD) test
+GO_LINT=golangci-lint run
+GO_CLEAN=$(GO_CMD) clean
+
+成果物=kube-dethrottler
+VERSION ?= $(shell git describe --tags --always --dirty)
+IMAGE_NAME ?= fedosin/kube-dethrottler
+IMAGE_TAG ?= $(VERSION)
+
+# Docker command, can be docker or podman, etc.
+DOCKER_CMD ?= docker
+
+all: build
+
+build: ## Build the Go binary
+	$(GO_BUILD) -ldflags="-w -s -X main.Version=$(VERSION)" -o $(成果物) cmd/kube-dethrottler/main.go
+
+clean: ## Clean up build artifacts
+	$(GO_CLEAN)
+	rm -f $(成果物)
+
+test: ## Run unit tests
+	$(GO_TEST) -v ./...
+
+lint: ## Run linters
+	$(GO_LINT)
+
+docker-build: build ## Build Docker image
+	$(DOCKER_CMD) build -t $(IMAGE_NAME):$(IMAGE_TAG) .
+
+docker-push: ## Push Docker image to registry
+	$(DOCKER_CMD) push $(IMAGE_NAME):$(IMAGE_TAG)
+
+helm-install: ## Install Helm chart (assuming chart is in ./charts/kube-dethrottler)
+	@echo "Make sure your Helm chart exists at ./charts/kube-dethrottler"
+	helm install kube-dethrottler ./charts/kube-dethrottler --namespace kube-system --create-namespace
+
+helm-upgrade: ## Upgrade Helm release
+	helm upgrade kube-dethrottler ./charts/kube-dethrottler --namespace kube-system
+
+helm-uninstall: ## Uninstall Helm release
+	helm uninstall kube-dethrottler --namespace kube-system
+
+e2e: ## Placeholder for end-to-end tests
+	@echo "End-to-end tests are not yet implemented. Please configure Kind/Minikube and test scripts."
+
+.PHONY: all build clean test lint docker-build docker-push helm-install helm-upgrade helm-uninstall e2e
+
+help: ## Display this help screen
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}' 
