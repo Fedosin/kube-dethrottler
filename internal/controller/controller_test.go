@@ -127,7 +127,7 @@ func TestController_Run_InitialTaintCheck_NodeAlreadyTainted(t *testing.T) {
 	}
 	mockKube := newMockKubeClient()
 	// Simulate node already having the taint
-	mockKube.taints[cfg.TaintKey+"-"+cfg.TaintEffect] = corev1.Taint{Key: cfg.TaintKey, Value: "high-load", Effect: corev1.TaintEffect(cfg.TaintEffect)}
+	mockKube.taints[cfg.TaintKey+"-"+cfg.TaintEffect] = corev1.Taint{Key: cfg.TaintKey, Value: "load-exceeded", Effect: corev1.TaintEffect(cfg.TaintEffect)}
 
 	ctrl := newTestController(cfg, mockKube, logger)
 	// cpuCount will be set by load.GetCPUCount() in NewController call above.
@@ -279,7 +279,7 @@ func TestController_Run_ShutdownRemovesTaint(t *testing.T) {
 	// Start the controller as if it has just tainted the node
 	ctrl.tainted = true
 	ctrl.lastTaintTime = time.Now()
-	mockKube.taints[cfg.TaintKey+"-"+cfg.TaintEffect] = corev1.Taint{Key: cfg.TaintKey, Value: "high-load", Effect: corev1.TaintEffect(cfg.TaintEffect)}
+	mockKube.taints[cfg.TaintKey+"-"+cfg.TaintEffect] = corev1.Taint{Key: cfg.TaintKey, Value: "load-exceeded", Effect: corev1.TaintEffect(cfg.TaintEffect)}
 
 	ctx, cancel := context.WithCancel(context.Background())
 

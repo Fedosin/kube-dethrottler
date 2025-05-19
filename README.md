@@ -1,10 +1,6 @@
 # kube-dethrottler
 
-The goal of `kube-dethrottler` is to prevent Kubernetes nodes from becoming overloaded due to non-CPU resource usage. The default Kubernetes scheduler currently bases placement decisions primarily on CPU usage, ignoring disk I/O and network activity. This can lead to nodes becoming heavily loaded even when CPU usage appears low. This program addresses this issue by marking overloaded nodes with a Kubernetes taint, discouraging the scheduler from placing additional pods on them.
-
-## Program Logic
-
-The program continuously reads the system load average from the host’s /proc/loadavg file. It calculates the normalized load average by dividing each value by the number of CPU cores. If any of the normalized load averages (1-minute, 5-minute, or 15-minute) exceed their respective configured thresholds, the program applies a taint to the node. If all values fall below their thresholds, the taint is removed.
+`kube-dethrottler` is a Kubernetes node agent designed to prevent nodes from becoming overloaded due to high system load average. The goal of this program is to prevent Kubernetes nodes from becoming overloaded due to non-CPU resource usage. The default Kubernetes scheduler currently bases placement decisions primarily on CPU usage, ignoring disk I/O and network activity. This can lead to nodes becoming heavily loaded even when CPU usage appears low. kube-dethrottler addresses this issue by marking overloaded nodes with a Kubernetes taint, discouraging the scheduler from placing additional pods on them.
 
 ## Features
 
@@ -30,7 +26,7 @@ The program continuously reads the system load average from the host’s /proc/l
     *   Each threshold ( `load1m`, `load5m`, `load15m`) can be set independently. A value of `0` for a threshold disables the check for that specific period.
 5.  **Tainting Logic**:
     *   **Apply Taint**: If any of the active (non-zero) thresholds are exceeded by their corresponding normalized load average, and the node is not already tainted by this controller:
-        *   `kube-dethrottler` applies a taint to the node. The taint `key`, `value` (fixed as `high-load`), and `effect` (e.g., `NoSchedule`, `PreferNoSchedule`, `NoExecute`) are configurable.
+        *   `kube-dethrottler` applies a taint to the node. The taint `key`, `value` (fixed as `load-exceeded`), and `effect` (e.g., `NoSchedule`, `PreferNoSchedule`, `NoExecute`) are configurable.
         *   The time of tainting is recorded.
     *   **Maintain Taint**: If thresholds are still exceeded and the node is already tainted, the `lastTaintTime` is updated to effectively reset/extend the cooldown consideration period if the load remains high.
     *   **Remove Taint**: If all normalized load averages are *below* their respective thresholds:
@@ -49,7 +45,7 @@ A typical configuration file (`config.yaml`) would look like this:
 pollInterval: "10s" # How often to check load averages. Recommended: 10s-30s.
 cooldownPeriod: "5m" # How long to wait after load returns to normal before removing the taint. Recommended: 5m-15m.
 
-taintKey: "kube-dethrottler/high-load" # Taint key to apply.
+taintKey: "kube-dethrottler/load-exceeded" # Taint key to apply.
 taintEffect: "NoSchedule" # Taint effect. Options: NoSchedule, PreferNoSchedule, NoExecute.
 
 # Thresholds for *normalized* load averages (raw load / CPU cores).
