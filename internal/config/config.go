@@ -48,7 +48,7 @@ func LoadConfig(configPath string) (*Config, error) {
 		cfg.CooldownPeriod = 5 * time.Minute // Default cooldown period
 	}
 	if cfg.TaintKey == "" {
-		cfg.TaintKey = "kube-dethrottler/load-exceeded"
+		cfg.TaintKey = "kube-dethrottler/high-load"
 	}
 	if cfg.TaintEffect == "" {
 		cfg.TaintEffect = "NoSchedule" // Default TaintEffect

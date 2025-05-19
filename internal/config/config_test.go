@@ -47,8 +47,8 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.CooldownPeriod != 5*time.Minute {
 		t.Errorf("cfg.CooldownPeriod = %v, want %v", cfg.CooldownPeriod, 5*time.Minute)
 	}
-	if cfg.TaintKey != "kube-dethrottler/load-exceeded" {
-		t.Errorf("cfg.TaintKey = %v, want %v", cfg.TaintKey, "kube-dethrottler/load-exceeded")
+	if cfg.TaintKey != "kube-dethrottler/high-load" {
+		t.Errorf("cfg.TaintKey = %v, want %v", cfg.TaintKey, "kube-dethrottler/high-load")
 	}
 	if cfg.TaintEffect != "NoSchedule" {
 		t.Errorf("cfg.TaintEffect = %v, want %v", cfg.TaintEffect, "NoSchedule")

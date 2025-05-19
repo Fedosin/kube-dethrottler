@@ -57,7 +57,7 @@ func (c *Controller) Run(ctx context.Context) {
 		c.tainted = existingTaint
 		if c.tainted {
 			c.lastTaintTime = time.Now() // If already tainted, assume it was just now for cooldown purposes
-			c.logger.Printf("Node is already tainted with %s=%s:%s", c.config.TaintKey, "load-exceeded", c.config.TaintEffect)
+			c.logger.Printf("Node is already tainted with %s=%s:%s", c.config.TaintKey, "high-load", c.config.TaintEffect)
 		}
 	}
 
@@ -115,8 +115,8 @@ func (c *Controller) checkLoadAndTaint(ctx context.Context) {
 	if exceeded {
 		if !c.tainted {
 			c.logger.Printf("Threshold exceeded. Applying taint %s=%s:%s to node %s",
-				c.config.TaintKey, "load-exceeded", c.config.TaintEffect, c.config.NodeName)
-			err := c.kubeClient.ApplyTaint(ctx, c.config.NodeName, c.config.TaintKey, "load-exceeded", c.config.TaintEffect)
+				c.config.TaintKey, "high-load", c.config.TaintEffect, c.config.NodeName)
+			err := c.kubeClient.ApplyTaint(ctx, c.config.NodeName, c.config.TaintKey, "high-load", c.config.TaintEffect)
 			if err != nil {
 				c.logger.Printf("Error applying taint: %v", err)
 			} else {

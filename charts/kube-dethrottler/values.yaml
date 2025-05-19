@@ -69,7 +69,7 @@ config:
   # -- How long to wait after removing a taint before it can be re-applied
   cooldownPeriod: "5m"
   # -- Taint key to apply when thresholds are exceeded
-  taintKey: "kube-dethrottler/load-exceeded"
+  taintKey: "kube-dethrottler/high-load"
   # -- Taint effect to apply (NoSchedule, PreferNoSchedule, NoExecute)
   taintEffect: "NoSchedule"
 
