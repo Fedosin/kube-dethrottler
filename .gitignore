@@ -22,4 +22,4 @@ go.work
 .vscode/
 
 # Compiled binary
-kube-dethrottler 
+./bin/kube-dethrottler 

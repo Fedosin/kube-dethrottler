@@ -4,7 +4,10 @@ GO_TEST=$(GO_CMD) test
 GO_LINT=golangci-lint run
 GO_CLEAN=$(GO_CMD) clean
 
-成果物=kube-dethrottler
+BINARY_NAME=kube-dethrottler
+BIN_PATH=./bin
+CMD_PATH=./cmd/kube-dethrottler
+
 VERSION ?= $(shell git describe --tags --always --dirty)
 IMAGE_NAME ?= fedosin/kube-dethrottler
 IMAGE_TAG ?= $(VERSION)
@@ -15,22 +18,28 @@ DOCKER_CMD ?= docker
 all: build
 
 build: ## Build the Go binary
-	$(GO_BUILD) -ldflags="-w -s -X main.Version=$(VERSION)" -o $(成果物) cmd/kube-dethrottler/main.go
+	@echo "Building $(BINARY_NAME) version $(VERSION)"
+	$(GO_BUILD) -ldflags="-w -s -X main.Version=$(VERSION)" -o $(BIN_PATH)/$(BINARY_NAME) $(CMD_PATH)/main.go
 
 clean: ## Clean up build artifacts
+	@echo "Cleaning up build artifacts"
 	$(GO_CLEAN)
-	rm -f $(成果物)
+	rm -f $(BIN_PATH)/$(BINARY_NAME)
 
 test: ## Run unit tests
+	@echo "Running unit tests"
 	$(GO_TEST) -v ./...
 
 lint: ## Run linters
+	@echo "Running linters"
 	$(GO_LINT)
 
 docker-build: build ## Build Docker image
+	@echo "Building Docker image"
 	$(DOCKER_CMD) build -t $(IMAGE_NAME):$(IMAGE_TAG) .
 
 docker-push: ## Push Docker image to registry
+	@echo "Pushing Docker image to registry"
 	$(DOCKER_CMD) push $(IMAGE_NAME):$(IMAGE_TAG)
 
 helm-install: ## Install Helm chart (assuming chart is in ./charts/kube-dethrottler)
@@ -38,9 +47,11 @@ helm-install: ## Install Helm chart (assuming chart is in ./charts/kube-dethrott
 	helm install kube-dethrottler ./charts/kube-dethrottler --namespace kube-system --create-namespace
 
 helm-upgrade: ## Upgrade Helm release
+	@echo "Upgrading Helm release"
 	helm upgrade kube-dethrottler ./charts/kube-dethrottler --namespace kube-system
 
 helm-uninstall: ## Uninstall Helm release
+	@echo "Uninstalling Helm release"
 	helm uninstall kube-dethrottler --namespace kube-system
 
 e2e: ## Placeholder for end-to-end tests
