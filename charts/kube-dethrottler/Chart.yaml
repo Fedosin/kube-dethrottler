@@ -1,0 +1,37 @@
+apiVersion: v2
+name: kube-dethrottler
+description: A Helm chart for Kubernetes kube-dethrottler
+
+# A chart can be either an application or a library chart.
+# Application charts are a collection of templates that can be packaged into versioned archives
+# to be deployed.
+# Library charts provide useful utilities or functions for the chart developer. They're included as
+# a dependency of application charts to get access to the utilities and functions. Library charts
+# do not define any templates and therefore cannot be deployed.
+type: application
+
+# This is the chart version. This version number should be incremented each time you make changes
+# to the chart and its templates, including the appVersion.
+# Versions are expected to follow Semantic Versioning (https://semver.org/)
+version: 0.1.0
+
+# This is the version number of the application being deployed. This version number should be
+# incremented each time you make changes to the application. Versions are expected to 
+# follow Semantic Versioning (https://semver.org/)
+appVersion: "1.0.0" # This will typically be your Go app version
+
+keywords:
+  - dethrottler
+  - kubernetes
+  - node
+  - load
+  - taint
+
+home: https://github.com/Fedosin/kube-dethrottler # Replace with your project URL
+# sources:
+  # - https://github.com/Fedosin/kube-dethrottler # Replace with your project URL
+
+# maintainers:
+#   - name: YourName
+#     email: your.email@example.com
+#     url: https://your.website.com 

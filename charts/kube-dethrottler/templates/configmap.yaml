@@ -1,0 +1,27 @@
+{{- if .Values.config -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kube-dethrottler.configMapName" . }}
+  labels:
+    {{- include "kube-dethrottler.labels" . | nindent 4 }}
+data:
+  config.yaml: |-
+    {{- with .Values.config }}
+    nodeName: "" # This will be populated by the Downward API in the DaemonSet
+    pollInterval: {{ .pollInterval | quote }}
+    cooldownPeriod: {{ .cooldownPeriod | quote }}
+    taintKey: {{ .taintKey | quote }}
+    taintEffect: {{ .taintEffect | quote }}
+    thresholds:
+      load1m: {{ .thresholds.load1m }}
+      load5m: {{ .thresholds.load5m }}
+      load15m: {{ .thresholds.load15m }}
+    {{- if .kubeconfigPath }}
+    kubeconfigPath: {{ .kubeconfigPath | quote }}
+    {{- else }}
+    kubeconfigPath: ""
+    {{- end }}
+    {{- end -}}
+{{- end -}} 

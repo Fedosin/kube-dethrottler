@@ -1,0 +1,16 @@
+{{- if .Values.rbac.create -}}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kube-dethrottler.fullname" . }}
+  labels:
+    {{- include "kube-dethrottler.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""] # core API group
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["nodes/status"]
+    verbs: ["patch", "update"] # To update taints which are part of node status in some views
+{{- end -}} 

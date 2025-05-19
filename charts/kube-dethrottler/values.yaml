@@ -1,0 +1,107 @@
+# Default values for kube-dethrottler.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1 # This will be ignored by DaemonSet, but it's good practice to keep it
+
+image:
+  repository: fedosin/kube-dethrottler # Replace with your image repository
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: "kube-dethrottler"
+
+# Pod security context
+# See https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
+podSecurityContext: {}
+  # fsGroup: 2000
+
+# Container security context
+# See https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+# DaemonSet specific update strategy
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+
+# Node selector for DaemonSet
+nodeSelector: {}
+  # kubernetes.io/os: linux
+
+# Tolerations for DaemonSet
+tolerations: []
+# - key: "example-key"
+#   operator: "Exists"
+#   effect: "NoSchedule"
+
+# Affinity for DaemonSet
+affinity: {}
+
+podAnnotations: {}
+
+# Configuration for kube-dethrottler application
+config:
+  # -- Node name will be injected via Downward API
+  # nodeName: ""
+
+  # -- How often to poll /proc/loadavg
+  pollInterval: "10s"
+  # -- How long to wait after removing a taint before it can be re-applied
+  cooldownPeriod: "5m"
+  # -- Taint key to apply when thresholds are exceeded
+  taintKey: "kube-dethrottler/load-exceeded"
+  # -- Taint effect to apply (NoSchedule, PreferNoSchedule, NoExecute)
+  taintEffect: "NoSchedule"
+
+  # -- Load average thresholds. 0 disables a check.
+  # These are normalized values (raw load / CPU cores)
+  thresholds:
+    load1m: 2.0
+    load5m: 1.5
+    load15m: 1.0
+  
+  # -- Optional path to kubeconfig file (for local development, not in-cluster)
+  # kubeconfigPath: ""
+
+# Resources for the kube-dethrottler container
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+# RBAC configuration
+rbac:
+  create: true
+  # Additional rules can be added here if needed
+  # Example:
+  # rules:
+  # - apiGroups: [""]
+  #   resources: ["pods"]
+  #   verbs: ["get", "list", "watch"] 
