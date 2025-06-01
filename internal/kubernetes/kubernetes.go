@@ -73,7 +73,7 @@ func (c *Client) ApplyTaint(ctx context.Context, nodeName, taintKey, taintValue,
 	if !taintFound {
 		taints = append(taints, corev1.Taint{
 			Key:    taintKey,
-			Value:  "true",
+			Value:  taintValue,
 			Effect: corev1.TaintEffect(effect),
 		})
 		taintAdded = true
@@ -87,7 +87,6 @@ func (c *Client) ApplyTaint(ctx context.Context, nodeName, taintKey, taintValue,
 
 	return updateNodeWithTaints(ctx, c.clientset, nodeName, taints)
 }
-
 
 // RemoveTaint removes a taint from a node
 func (c *Client) RemoveTaint(ctx context.Context, nodeName, taintKey, taintEffect string) error {
@@ -140,7 +139,6 @@ func updateNodeWithTaints(ctx context.Context, clientset kubernetes.Interface, n
 
 	return nil
 }
-
 
 // HasTaint checks if the node has a specific taint.
 func (c *Client) HasTaint(ctx context.Context, nodeName, taintKey, taintEffect string) (bool, error) {
