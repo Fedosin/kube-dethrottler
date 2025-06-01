@@ -113,40 +113,50 @@ func (c *Controller) checkLoadAndTaint(ctx context.Context) {
 	}
 
 	if exceeded {
-		if !c.tainted {
-			c.logger.Printf("Threshold exceeded. Applying taint %s=%s:%s to node %s",
-				c.config.TaintKey, "high-load", c.config.TaintEffect, c.config.NodeName)
-			err := c.kubeClient.ApplyTaint(ctx, c.config.NodeName, c.config.TaintKey, "high-load", c.config.TaintEffect)
-			if err != nil {
-				c.logger.Printf("Error applying taint: %v", err)
-			} else {
-				c.tainted = true
-				c.lastTaintTime = time.Now()
-				c.logger.Printf("Taint %s applied successfully.", c.config.TaintKey)
-			}
+		c.handleExceeded(ctx)
+	} else {
+		c.handleNotExceeded(ctx)
+	}
+}
+
+func (c *Controller) handleExceeded(ctx context.Context) {
+	if c.tainted {
+		c.logger.Printf("Threshold exceeded, but node is already tainted. Updating lastTaintTime for cooldown.")
+		c.lastTaintTime = time.Now() // Update timestamp to prolong cooldown if still exceeding
+		return
+	}
+
+	c.logger.Printf("Threshold exceeded. Applying taint %s=%s:%s to node %s",
+		c.config.TaintKey, "high-load", c.config.TaintEffect, c.config.NodeName)
+	err := c.kubeClient.ApplyTaint(ctx, c.config.NodeName, c.config.TaintKey, "high-load", c.config.TaintEffect)
+	if err != nil {
+		c.logger.Printf("Error applying taint: %v", err)
+	} else {
+		c.tainted = true
+		c.lastTaintTime = time.Now()
+		c.logger.Printf("Taint %s applied successfully.", c.config.TaintKey)
+	}
+}
+
+func (c *Controller) handleNotExceeded(ctx context.Context) {
+	if !c.tainted {
+		c.logger.Print("All metrics below thresholds. No action needed.")
+		return
+	}
+
+	if time.Since(c.lastTaintTime) >= c.config.CooldownPeriod {
+		c.logger.Printf("All metrics below thresholds and cooldown period (%s) passed. Removing taint %s from node %s",
+			c.config.CooldownPeriod, c.config.TaintKey, c.config.NodeName)
+		err := c.kubeClient.RemoveTaint(ctx, c.config.NodeName, c.config.TaintKey, c.config.TaintEffect)
+		if err != nil {
+			c.logger.Printf("Error removing taint: %v", err)
 		} else {
-			c.logger.Printf("Threshold exceeded, but node is already tainted. Updating lastTaintTime for cooldown.")
-			c.lastTaintTime = time.Now() // Update timestamp to prolong cooldown if still exceeding
+			c.tainted = false
+			c.logger.Printf("Taint %s removed successfully.", c.config.TaintKey)
 		}
 	} else {
-		if c.tainted {
-			if time.Since(c.lastTaintTime) >= c.config.CooldownPeriod {
-				c.logger.Printf("All metrics below thresholds and cooldown period (%s) passed. Removing taint %s from node %s",
-					c.config.CooldownPeriod, c.config.TaintKey, c.config.NodeName)
-				err := c.kubeClient.RemoveTaint(ctx, c.config.NodeName, c.config.TaintKey, c.config.TaintEffect)
-				if err != nil {
-					c.logger.Printf("Error removing taint: %v", err)
-				} else {
-					c.tainted = false
-					c.logger.Printf("Taint %s removed successfully.", c.config.TaintKey)
-				}
-			} else {
-				c.logger.Printf("Metrics are below thresholds, but cooldown period (%s) not yet passed. Time since last taint: %s",
-					c.config.CooldownPeriod, time.Since(c.lastTaintTime))
-			}
-		} else {
-			c.logger.Print("All metrics below thresholds. No action needed.")
-		}
+		c.logger.Printf("Metrics are below thresholds, but cooldown period (%s) not yet passed. Time since last taint: %s",
+			c.config.CooldownPeriod, time.Since(c.lastTaintTime))
 	}
 }
 
