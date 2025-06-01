@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -62,5 +63,48 @@ func LoadConfig(configPath string) (*Config, error) {
 		cfg.NodeName = os.Getenv("NODE_NAME")
 	}
 
+	// Validate the configuration
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
+
 	return &cfg, nil
+}
+
+// Validate checks if the configuration is valid
+func (c *Config) Validate() error {
+	// Validate poll interval
+	if c.PollInterval < 1*time.Second {
+		return fmt.Errorf("pollInterval must be at least 1 second, got %s", c.PollInterval)
+	}
+	if c.PollInterval > 5*time.Minute {
+		return fmt.Errorf("pollInterval should not exceed 5 minutes, got %s", c.PollInterval)
+	}
+
+	// Validate cooldown period
+	if c.CooldownPeriod < c.PollInterval {
+		return fmt.Errorf("cooldownPeriod (%s) must be greater than pollInterval (%s)", c.CooldownPeriod, c.PollInterval)
+	}
+
+	// Validate taint effect
+	validEffects := map[string]bool{
+		"NoSchedule":       true,
+		"PreferNoSchedule": true,
+		"NoExecute":        true,
+	}
+	if !validEffects[c.TaintEffect] {
+		return fmt.Errorf("invalid taintEffect: %s. Must be one of: NoSchedule, PreferNoSchedule, NoExecute", c.TaintEffect)
+	}
+
+	// Validate thresholds
+	if c.Thresholds.Load1m < 0 || c.Thresholds.Load5m < 0 || c.Thresholds.Load15m < 0 {
+		return fmt.Errorf("load thresholds cannot be negative")
+	}
+
+	// Warn if all thresholds are disabled
+	if c.Thresholds.Load1m == 0 && c.Thresholds.Load5m == 0 && c.Thresholds.Load15m == 0 {
+		return fmt.Errorf("at least one load threshold must be set (non-zero)")
+	}
+
+	return nil
 }
