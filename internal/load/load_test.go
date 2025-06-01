@@ -28,7 +28,7 @@ func TestReadLoadAvg_Success(t *testing.T) {
 
 	// Create a dummy /proc/loadavg file
 	content := "1.23 4.56 7.89 1/123 12345"
-	if err := os.WriteFile(tempProcLoadavg, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(tempProcLoadavg, []byte(content), 0o600); err != nil {
 		t.Fatalf("Failed to write temp loadavg file: %v", err)
 	}
 

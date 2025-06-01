@@ -19,7 +19,7 @@ func TestLoadConfig_Defaults(t *testing.T) {
   load1m: 2.0
   load5m: 1.5
   load15m: 1.0`)
-	if err := os.WriteFile(configFile, configData, 0644); err != nil {
+	if err := os.WriteFile(configFile, configData, 0o600); err != nil {
 		t.Fatalf("Failed to write temp config file: %v", err)
 	}
 
@@ -31,9 +31,9 @@ func TestLoadConfig_Defaults(t *testing.T) {
 		t.Fatalf("Failed to set NODE_NAME env var: %v", err)
 	}
 	defer func() {
-		err := os.Setenv("NODE_NAME", originalNodeName)
-		if err != nil {
-			t.Fatalf("Failed to restore NODE_NAME env var: %v", err)
+		errSetEnv := os.Setenv("NODE_NAME", originalNodeName)
+		if errSetEnv != nil {
+			t.Fatalf("Failed to restore NODE_NAME env var: %v", errSetEnv)
 		}
 	}()
 
@@ -85,7 +85,7 @@ func TestLoadConfig_CustomValues(t *testing.T) {
 		t.Fatalf("Failed to marshal custom config: %v", err)
 	}
 
-	if err := os.WriteFile(configFile, yamlData, 0644); err != nil {
+	if err = os.WriteFile(configFile, yamlData, 0o600); err != nil {
 		t.Fatalf("Failed to write temp custom config file: %v", err)
 	}
 
@@ -135,7 +135,7 @@ func TestLoadConfig_InvalidYaml(t *testing.T) {
 	configFile := filepath.Join(tempDir, "invalid.yaml")
 
 	invalidYAML := []byte("this: is: not: valid: yaml")
-	if err := os.WriteFile(configFile, invalidYAML, 0644); err != nil {
+	if err := os.WriteFile(configFile, invalidYAML, 0o600); err != nil {
 		t.Fatalf("Failed to write temp invalid config file: %v", err)
 	}
 
@@ -147,9 +147,9 @@ func TestLoadConfig_InvalidYaml(t *testing.T) {
 
 func TestConfig_Validate(t *testing.T) {
 	tests := []struct {
-		config  Config
 		name    string
 		errMsg  string
+		config  Config
 		wantErr bool
 	}{
 		{

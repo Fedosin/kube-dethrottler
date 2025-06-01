@@ -31,10 +31,10 @@ func TestNewClient_WithKubeconfig(t *testing.T) {
 		t.Fatalf("Failed to create temp kubeconfig file: %v", err)
 	}
 	defer func() {
-		if err := tempFile.Close(); err != nil {
-			t.Errorf("Failed to close temp kubeconfig file: %v", err)
+		if errClose := tempFile.Close(); errClose != nil {
+			t.Errorf("Failed to close temp kubeconfig file: %v", errClose)
 		}
-		if err := os.Remove(tempFile.Name()); err != nil {
+		if errRemove := os.Remove(tempFile.Name()); errRemove != nil {
 			t.Errorf("Failed to remove temp kubeconfig file: %v", err)
 		}
 	}()
@@ -55,7 +55,7 @@ kind: Config
 users:
 - name: test-user
 `
-	if _, err := tempFile.WriteString(kubeconfigContent); err != nil {
+	if _, err = tempFile.WriteString(kubeconfigContent); err != nil {
 		t.Fatalf("Failed to write to temp kubeconfig file: %v", err)
 	}
 

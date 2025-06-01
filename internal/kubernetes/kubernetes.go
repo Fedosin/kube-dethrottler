@@ -97,7 +97,7 @@ func (c *Client) RemoveTaint(ctx context.Context, nodeName, taintKey, taintEffec
 
 	// Check and prepare taints
 	taintFound := false
-	var newTaints []corev1.Taint
+	newTaints := make([]corev1.Taint, 0, len(node.Spec.Taints))
 	for _, taint := range node.Spec.Taints {
 		if taint.Key == taintKey && taint.Effect == corev1.TaintEffect(taintEffect) {
 			taintFound = true
