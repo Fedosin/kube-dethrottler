@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -30,7 +32,31 @@ type Config struct {
 
 // LoadConfig reads the YAML configuration file and returns a Config struct.
 func LoadConfig(configPath string) (*Config, error) {
-	data, err := os.ReadFile(configPath)
+	// Sanitize and validate the config path
+	cleanPath := filepath.Clean(configPath)
+
+	// Ensure the path is absolute
+	absPath, err := filepath.Abs(cleanPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve config path: %w", err)
+	}
+
+	// Check if the file exists and is a regular file
+	fileInfo, err := os.Stat(absPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to access config file: %w", err)
+	}
+	if fileInfo.IsDir() {
+		return nil, fmt.Errorf("config path is a directory, not a file: %s", absPath)
+	}
+
+	// Validate file extension
+	if !strings.HasSuffix(strings.ToLower(absPath), ".yaml") && !strings.HasSuffix(strings.ToLower(absPath), ".yml") {
+		return nil, fmt.Errorf("config file must have .yaml or .yml extension: %s", absPath)
+	}
+
+	// #nosec G304 -- Path has been validated and sanitized above
+	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +80,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	if cfg.TaintEffect == "" {
 		cfg.TaintEffect = "NoSchedule" // Default TaintEffect
 	}
-	cfg.ConfigFilePath = configPath // Store the path for reference
+	cfg.ConfigFilePath = absPath // Store the path for reference
 
 	// NodeName will be typically set via downward API in a K8s environment
 	// but can be overridden in config for local testing.
