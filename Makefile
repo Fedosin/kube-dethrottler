@@ -19,6 +19,7 @@ all: build
 
 build: ## Build the Go binary
 	@echo "Building $(BINARY_NAME) version $(VERSION)"
+	@mkdir -p $(BIN_PATH)
 	$(GO_BUILD) -ldflags="-w -s -X main.Version=$(VERSION)" -o $(BIN_PATH)/$(BINARY_NAME) $(CMD_PATH)/main.go
 
 clean: ## Clean up build artifacts
