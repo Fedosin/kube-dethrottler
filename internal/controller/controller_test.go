@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ type mockKubeClient struct {
 	taints          map[string]corev1.Taint
 	appliedTaintKey string
 	removedTaintKey string
+	mu              sync.Mutex
 	taintApplied    bool
 	taintRemoved    bool
 }
@@ -32,6 +34,9 @@ func newMockKubeClient() *mockKubeClient {
 }
 
 func (m *mockKubeClient) HasTaint(ctx context.Context, nodeName, taintKey, taintEffect string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if m.hasTaintErr != nil {
 		return false, m.hasTaintErr
 	}
@@ -41,6 +46,9 @@ func (m *mockKubeClient) HasTaint(ctx context.Context, nodeName, taintKey, taint
 }
 
 func (m *mockKubeClient) ApplyTaint(ctx context.Context, nodeName, taintKey, taintValue, taintEffect string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.taintApplied = true
 	m.taintRemoved = false
 	m.appliedTaintKey = taintKey
@@ -53,6 +61,9 @@ func (m *mockKubeClient) ApplyTaint(ctx context.Context, nodeName, taintKey, tai
 }
 
 func (m *mockKubeClient) RemoveTaint(ctx context.Context, nodeName, taintKey, taintEffect string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.taintRemoved = true
 	m.taintApplied = false
 	m.removedTaintKey = taintKey
@@ -62,6 +73,38 @@ func (m *mockKubeClient) RemoveTaint(ctx context.Context, nodeName, taintKey, ta
 	key := taintKey + "-" + taintEffect
 	delete(m.taints, key)
 	return nil
+}
+
+// Helper methods to safely read mock state.
+func (m *mockKubeClient) getTaintRemoved() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.taintRemoved
+}
+
+func (m *mockKubeClient) getRemovedTaintKey() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.removedTaintKey
+}
+
+func (m *mockKubeClient) getTaintApplied() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.taintApplied
+}
+
+func (m *mockKubeClient) getAppliedTaintKey() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.appliedTaintKey
+}
+
+func (m *mockKubeClient) hasTaintInMap(key string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, exists := m.taints[key]
+	return exists
 }
 
 // Ensure mockKubeClient implements the interface.
@@ -138,10 +181,25 @@ func TestController_Run_InitialTaintCheck_NodeAlreadyTainted(t *testing.T) {
 	defer cancel()
 
 	setupMockLoadReader(&load.Averages{Load1m: 0.1, Load5m: 0.1, Load15m: 0.1}, nil) // Low load
-	defer teardownMockLoadReader()
 
-	go ctrl.Run(ctx)
-	time.Sleep(20 * time.Millisecond) // Allow Run to perform initial check
+	// Use a channel to signal when the controller has finished
+	done := make(chan struct{})
+	go func() {
+		ctrl.Run(ctx)
+		close(done)
+	}()
+
+	// Wait for either the controller to finish or timeout
+	select {
+	case <-done:
+		// Controller finished
+	case <-time.After(100 * time.Millisecond):
+		cancel() // Force shutdown if still running
+		<-done   // Wait for it to actually finish
+	}
+
+	// Now it's safe to tear down the mock load reader
+	teardownMockLoadReader()
 
 	if !ctrl.tainted {
 		t.Error("Controller should be in tainted state after recognizing an existing taint")
@@ -151,7 +209,7 @@ func TestController_Run_InitialTaintCheck_NodeAlreadyTainted(t *testing.T) {
 	}
 
 	// Verify no new ApplyTaint was called if it already existed
-	if mockKube.taintApplied {
+	if mockKube.getTaintApplied() {
 		t.Error("Expected ApplyTaint to not be called on mock client")
 	}
 }
@@ -174,17 +232,17 @@ func TestController_checkLoadAndTaint_ApplyTaint(t *testing.T) {
 
 	ctrl.checkLoadAndTaint(context.Background())
 
-	if !mockKube.taintApplied {
+	if !mockKube.getTaintApplied() {
 		t.Error("Expected ApplyTaint to be called on mock client")
 	}
-	if mockKube.appliedTaintKey != cfg.TaintKey {
-		t.Errorf("Expected taint key %s to be applied, got %s", cfg.TaintKey, mockKube.appliedTaintKey)
+	if mockKube.getAppliedTaintKey() != cfg.TaintKey {
+		t.Errorf("Expected taint key %s to be applied, got %s", cfg.TaintKey, mockKube.getAppliedTaintKey())
 	}
 	if !ctrl.tainted {
 		t.Error("Controller state 'tainted' should be true after applying taint")
 	}
 	keyInMock := cfg.TaintKey + "-" + cfg.TaintEffect
-	if _, exists := mockKube.taints[keyInMock]; !exists {
+	if !mockKube.hasTaintInMap(keyInMock) {
 		t.Errorf("Taint %s not found in mock client's taints map", keyInMock)
 	}
 }
@@ -213,16 +271,16 @@ func TestController_checkLoadAndTaint_RemoveTaint(t *testing.T) {
 
 	ctrl.checkLoadAndTaint(context.Background())
 
-	if !mockKube.taintRemoved {
+	if !mockKube.getTaintRemoved() {
 		t.Error("Expected RemoveTaint to be called on mock client")
 	}
-	if mockKube.removedTaintKey != cfg.TaintKey {
-		t.Errorf("Expected taint key %s to be removed, got %s", cfg.TaintKey, mockKube.removedTaintKey)
+	if mockKube.getRemovedTaintKey() != cfg.TaintKey {
+		t.Errorf("Expected taint key %s to be removed, got %s", cfg.TaintKey, mockKube.getRemovedTaintKey())
 	}
 	if ctrl.tainted {
 		t.Error("Controller state 'tainted' should be false after removing taint")
 	}
-	if _, exists := mockKube.taints[taintKeyInMap]; exists {
+	if mockKube.hasTaintInMap(taintKeyInMap) {
 		t.Errorf("Taint %s still exists in mock client's taints map after removal", taintKeyInMap)
 	}
 }
@@ -251,13 +309,13 @@ func TestController_checkLoadAndTaint_StillInCooldown(t *testing.T) {
 
 	ctrl.checkLoadAndTaint(context.Background())
 
-	if mockKube.taintRemoved {
+	if mockKube.getTaintRemoved() {
 		t.Error("RemoveTaint should NOT have been called as node is in cooldown")
 	}
 	if !ctrl.tainted {
 		t.Error("Controller state 'tainted' should remain true during cooldown")
 	}
-	if _, exists := mockKube.taints[taintKeyInMap]; !exists {
+	if !mockKube.hasTaintInMap(taintKeyInMap) {
 		t.Errorf("Taint %s was unexpectedly removed from mock client during cooldown", taintKeyInMap)
 	}
 }
@@ -279,23 +337,40 @@ func TestController_Run_ShutdownRemovesTaint(t *testing.T) {
 	// Start the controller as if it has just tainted the node
 	ctrl.tainted = true
 	ctrl.lastTaintTime = time.Now()
-	mockKube.taints[cfg.TaintKey+"-"+cfg.TaintEffect] = corev1.Taint{Key: cfg.TaintKey, Value: "high-load", Effect: corev1.TaintEffect(cfg.TaintEffect)}
+
+	// Pre-populate the taint in the mock
+	taintKey := cfg.TaintKey + "-" + cfg.TaintEffect
+	mockKube.mu.Lock()
+	mockKube.taints[taintKey] = corev1.Taint{Key: cfg.TaintKey, Value: "high-load", Effect: corev1.TaintEffect(cfg.TaintEffect)}
+	mockKube.mu.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	setupMockLoadReader(&load.Averages{Load1m: 0.1, Load5m: 0.1, Load15m: 0.1}, nil) // Low load
 	defer teardownMockLoadReader()
 
-	go ctrl.Run(ctx)
+	// Use a channel to signal when the controller has finished
+	done := make(chan struct{})
+	go func() {
+		ctrl.Run(ctx)
+		close(done)
+	}()
 
-	time.Sleep(5 * time.Millisecond)  // Allow Run to start, possibly one quick tick
-	cancel()                          // Trigger shutdown
-	time.Sleep(50 * time.Millisecond) // Give ample time for shutdown goroutine in Run to complete RemoveTaint
+	time.Sleep(5 * time.Millisecond) // Allow Run to start
+	cancel()                         // Trigger shutdown
 
-	if !mockKube.taintRemoved {
-		t.Errorf("Expected RemoveTaint to be called on shutdown. Taint removed: %v, Taint key: %s", mockKube.taintRemoved, mockKube.removedTaintKey)
+	// Wait for the controller to finish with a timeout
+	select {
+	case <-done:
+		// Controller finished successfully
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("Controller did not shut down within timeout")
 	}
-	if mockKube.removedTaintKey != cfg.TaintKey {
-		t.Errorf("Expected taint key %s to be removed on shutdown, got %s", cfg.TaintKey, mockKube.removedTaintKey)
+
+	if !mockKube.getTaintRemoved() {
+		t.Errorf("Expected RemoveTaint to be called on shutdown. Taint removed: %v, Taint key: %s", mockKube.getTaintRemoved(), mockKube.getRemovedTaintKey())
+	}
+	if mockKube.getRemovedTaintKey() != cfg.TaintKey {
+		t.Errorf("Expected taint key %s to be removed on shutdown, got %s", cfg.TaintKey, mockKube.getRemovedTaintKey())
 	}
 }

@@ -65,6 +65,7 @@ thresholds:
 *   The `thresholds` are for **normalized load averages**. This means the raw load average value from `/proc/loadavg` is divided by the number of CPU cores before comparison.
 *   For example, on a 4-core node, a `thresholds.load1m: 2.0` means the node will be considered for tainting if its raw 1-minute load average reaches `2.0 * 4 = 8.0`.
 *   Setting a threshold to `0` effectively disables the check for that particular load average period (1m, 5m, or 15m).
+*   At least one threshold must be set to a nonzero value.
 
 ## Helm Chart Installation
 
