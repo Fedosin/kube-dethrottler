@@ -1,0 +1,63 @@
+version: "2"
+
+run:
+  tests: true
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - ineffassign
+    - bodyclose
+    - gosec
+    - unconvert
+    - misspell
+    - prealloc
+    - copyloopvar
+    - gocritic
+    - gocyclo
+    - funlen
+    - whitespace
+    - goprintffuncname
+    - godot
+    - nestif
+    - nolintlint
+    - thelper
+  
+  settings:
+    govet:
+      enable-all: true
+    gocyclo:
+      min-complexity: 15
+    misspell:
+      locale: US
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+    funlen:
+      lines: 100
+      statements: 50
+  
+  exclusions:
+    generated: lax
+    rules:
+      # Don't warn on unused parameters
+      - text: "^unused parameter: '.*'$"
+        linters:
+          - errcheck
+          - govet
+          - staticcheck
+      # Exclude some linters from test files
+      - path: "_test\\.go"
+        linters:
+          - funlen
+          - goconst 
