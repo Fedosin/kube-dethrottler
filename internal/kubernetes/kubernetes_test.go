@@ -216,9 +216,9 @@ func TestHasTaint(t *testing.T) {
 	ctx := context.Background()
 	nodeName := "test-node"
 	testCases := []struct {
+		taintToFind    corev1.Taint
 		name           string
 		existingTaints []corev1.Taint
-		taintToFind    corev1.Taint
 		expected       bool
 		expectError    bool
 	}{

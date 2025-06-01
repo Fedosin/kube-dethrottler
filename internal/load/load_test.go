@@ -141,10 +141,10 @@ func TestParseLoadAvgContent_InvalidFormat_NonNumeric(t *testing.T) {
 
 func TestNormalizeLoadAverages(t *testing.T) {
 	tests := []struct {
-		name     string
 		avg      *Averages
-		cpuCount int
 		want     *Averages
+		name     string
+		cpuCount int
 	}{
 		{
 			name:     "Normal case",

@@ -26,7 +26,7 @@ type Client struct {
 	clientset kubernetes.Interface
 }
 
-// Ensure Client implements KubeClientInterface
+// Ensure Client implements KubeClientInterface.
 var _ KubeClientInterface = (*Client)(nil)
 
 // NewClient creates a new Kubernetes API client.
@@ -52,7 +52,7 @@ func NewClient(kubeconfigPath string) (*Client, error) {
 	return &Client{clientset: clientset}, nil
 }
 
-// ApplyTaint adds a taint to a node
+// ApplyTaint adds a taint to a node.
 func (c *Client) ApplyTaint(ctx context.Context, nodeName, taintKey, taintValue, effect string) error {
 	node, err := c.clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
@@ -88,7 +88,7 @@ func (c *Client) ApplyTaint(ctx context.Context, nodeName, taintKey, taintValue,
 	return updateNodeWithTaints(ctx, c.clientset, nodeName, taints)
 }
 
-// RemoveTaint removes a taint from a node
+// RemoveTaint removes a taint from a node.
 func (c *Client) RemoveTaint(ctx context.Context, nodeName, taintKey, taintEffect string) error {
 	node, err := c.clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
@@ -118,7 +118,7 @@ func (c *Client) RemoveTaint(ctx context.Context, nodeName, taintKey, taintEffec
 	return updateNodeWithTaints(ctx, c.clientset, nodeName, newTaints)
 }
 
-// updateNodeWithTaints updates node taints
+// updateNodeWithTaints updates node taints.
 func updateNodeWithTaints(ctx context.Context, clientset kubernetes.Interface, nodeName string, taints []corev1.Taint) error {
 	node, err := clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {

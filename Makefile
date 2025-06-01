@@ -35,6 +35,10 @@ lint: ## Run linters
 	@echo "Running linters"
 	$(GO_LINT)
 
+lint-fix: ## Run linters and fix issues
+	@echo "Running linters and fixing issues"
+	$(GO_LINT) --fix
+
 docker-build: build ## Build Docker image
 	@echo "Building Docker image"
 	$(DOCKER_CMD) build -t $(IMAGE_NAME):$(IMAGE_TAG) .

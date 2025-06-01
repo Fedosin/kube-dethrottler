@@ -13,16 +13,16 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// mockKubeClient implements kubernetes.KubeClientInterface for controller tests
+// mockKubeClient implements kubernetes.KubeClientInterface for controller tests.
 type mockKubeClient struct {
-	taints          map[string]corev1.Taint
 	hasTaintErr     error
 	applyTaintErr   error
 	removeTaintErr  error
-	taintApplied    bool // To check if ApplyTaint was called
-	taintRemoved    bool // To check if RemoveTaint was called
+	taints          map[string]corev1.Taint
 	appliedTaintKey string
 	removedTaintKey string
+	taintApplied    bool
+	taintRemoved    bool
 }
 
 func newMockKubeClient() *mockKubeClient {
@@ -64,10 +64,10 @@ func (m *mockKubeClient) RemoveTaint(ctx context.Context, nodeName, taintKey, ta
 	return nil
 }
 
-// Ensure mockKubeClient implements the interface
+// Ensure mockKubeClient implements the interface.
 var _ kubernetes.KubeClientInterface = (*mockKubeClient)(nil)
 
-// Global vars for mocking load values within the test file scope
+// Global vars for mocking load values within the test file scope.
 var currentMockLoadAverages *load.Averages
 var currentMockReadLoadAvgError error
 

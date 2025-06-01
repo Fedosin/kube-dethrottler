@@ -18,14 +18,14 @@ type Thresholds struct {
 
 // Config holds the application configuration.
 type Config struct {
-	NodeName       string        `yaml:"nodeName"` // Injected via Downward API
+	NodeName       string        `yaml:"nodeName"`
+	TaintKey       string        `yaml:"taintKey"`
+	TaintEffect    string        `yaml:"taintEffect"`
+	KubeconfigPath string        `yaml:"kubeconfigPath"`
+	ConfigFilePath string        `yaml:"configFilePath"`
+	Thresholds     Thresholds    `yaml:"thresholds"`
 	PollInterval   time.Duration `yaml:"pollInterval"`
 	CooldownPeriod time.Duration `yaml:"cooldownPeriod"`
-	TaintKey       string        `yaml:"taintKey"`
-	TaintEffect    string        `yaml:"taintEffect"` // e.g., "NoSchedule", "PreferNoSchedule", "NoExecute"
-	Thresholds     Thresholds    `yaml:"thresholds"`
-	KubeconfigPath string        `yaml:"kubeconfigPath"` // Optional: for local development
-	ConfigFilePath string        `yaml:"configFilePath"` // Path to this config file, for reloading or context
 }
 
 // LoadConfig reads the YAML configuration file and returns a Config struct.
@@ -71,7 +71,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	return &cfg, nil
 }
 
-// Validate checks if the configuration is valid
+// Validate checks if the configuration is valid.
 func (c *Config) Validate() error {
 	// Validate poll interval
 	if c.PollInterval < 1*time.Second {

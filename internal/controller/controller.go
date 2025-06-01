@@ -15,12 +15,12 @@ import (
 
 // Controller manages the main loop of reading load, checking thresholds, and tainting.
 type Controller struct {
-	config        *config.Config
+	lastTaintTime time.Time
 	kubeClient    kubernetes.KubeClientInterface
+	config        *config.Config
+	logger        *log.Logger
 	cpuCount      int
 	tainted       bool
-	lastTaintTime time.Time
-	logger        *log.Logger
 }
 
 // NewController creates a new Controller instance.
@@ -69,7 +69,7 @@ func (c *Controller) Run(ctx context.Context) {
 		case <-ctx.Done():
 			c.logger.Println("Shutting down controller...")
 			// Attempt to remove taint on shutdown if it was applied by this controller
-			// This is a best-effort, context might be already cancelled.
+			// This is a best-effort, context might be already canceled.
 			// Consider a separate context for this cleanup with a short timeout.
 			if c.tainted {
 				c.logger.Printf("Attempting to remove taint %s on shutdown...", c.config.TaintKey)

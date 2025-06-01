@@ -147,10 +147,10 @@ func TestLoadConfig_InvalidYaml(t *testing.T) {
 
 func TestConfig_Validate(t *testing.T) {
 	tests := []struct {
-		name    string
 		config  Config
-		wantErr bool
+		name    string
 		errMsg  string
+		wantErr bool
 	}{
 		{
 			name: "valid config",
