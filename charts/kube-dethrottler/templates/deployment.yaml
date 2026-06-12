@@ -1,19 +1,14 @@
 apiVersion: apps/v1
-kind: DaemonSet
+kind: Deployment
 metadata:
   name: {{ include "kube-dethrottler.fullname" . }}
   labels:
     {{- include "kube-dethrottler.labels" . | nindent 4 }}
 spec:
+  replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
       {{- include "kube-dethrottler.selectorLabels" . | nindent 6 }}
-  updateStrategy:
-    type: {{ .Values.updateStrategy.type }}
-    {{- if eq .Values.updateStrategy.type "RollingUpdate" }}
-    rollingUpdate:
-      maxUnavailable: {{ .Values.updateStrategy.rollingUpdate.maxUnavailable }}
-    {{- end }}
   template:
     metadata:
       labels:
@@ -28,21 +23,6 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "kube-dethrottler.serviceAccountName" . }}
-      hostPID: false # Should not need hostPID
-      hostNetwork: false # Should not need hostNetwork
-      dnsPolicy: ClusterFirst
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
       {{- with .Values.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
@@ -60,26 +40,31 @@ spec:
           args:
             - "--config=/config/config.yaml"
           env:
-            - name: NODE_NAME
+            - name: POD_NAMESPACE
               valueFrom:
                 fieldRef:
-                  fieldPath: spec.nodeName
+                  fieldPath: metadata.namespace
           ports: []
           {{- with .Values.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
-            - name: procfs
-              mountPath: /proc
-              readOnly: true # Essential for security and correctness
             - name: config-volume
               mountPath: /config
       volumes:
-        - name: procfs
-          hostPath:
-            path: /proc
-            type: Directory
         - name: config-volume
           configMap:
-            name: {{ include "kube-dethrottler.configMapName" . }} 
+            name: {{ include "kube-dethrottler.configMapName" . }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

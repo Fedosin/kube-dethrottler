@@ -1,26 +1,21 @@
 {{- define "kube-dethrottler.notes" -}}
 Kube Dethrottler has been installed.
 
-It is running as a DaemonSet on your Kubernetes nodes, monitoring load average and applying/removing taints as configured.
+It is running as a Deployment monitoring PSI (Pressure Stall Information) metrics
+on your Kubernetes nodes and applying/removing taints as configured.
 
 Configuration details:
-  Node Name: Injected via Downward API (spec.nodeName)
   Poll Interval: {{ .Values.config.pollInterval }}
   Cooldown Period: {{ .Values.config.cooldownPeriod }}
   Taint Key: {{ .Values.config.taintKey }}
   Taint Effect: {{ .Values.config.taintEffect }}
-  Thresholds:
-    1m Load (normalized): {{ .Values.config.thresholds.load1m }}
-    5m Load (normalized): {{ .Values.config.thresholds.load5m }}
-    15m Load (normalized): {{ .Values.config.thresholds.load15m }}
+  Node Filter: {{ .Values.config.nodeFilter | default "(all nodes)" }}
+  Leader Election: {{ .Values.config.leaderElection.enabled }}
 
-To check the status of the DaemonSet, run:
-  kubectl get daemonset {{ include "kube-dethrottler.fullname" . }} -n {{ .Release.Namespace }}
+To check the status of the Deployment, run:
+  kubectl get deployment {{ include "kube-dethrottler.fullname" . }} -n {{ .Release.Namespace }}
 
-To see the logs from a pod (replace <pod-name> with an actual pod name):
-  kubectl logs <pod-name> -n {{ .Release.Namespace }}
+To see the logs:
+  kubectl logs -l app.kubernetes.io/name={{ include "kube-dethrottler.name" . }} -n {{ .Release.Namespace }}
 
-Find a pod name by running:
-  kubectl get pods -n {{ .Release.Namespace }} -l {{ include "kube-dethrottler.selectorLabels" . | nindent 4 }}
-
-{{- end }} 
+{{- end }}

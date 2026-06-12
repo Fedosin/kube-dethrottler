@@ -1,115 +1,142 @@
 # kube-dethrottler
 
-The goal of `kube-dethrottler` is to prevent Kubernetes nodes from becoming overloaded by actively monitoring system load averages. While the default Kubernetes scheduler considers CPU and memory requests, it doesn't inherently react to overall system load, which can be influenced by factors like intense I/O operations not fully captured by CPU metrics alone. High system load can lead to nodes becoming unresponsive or performing poorly, even if CPU utilization isn't at its absolute peak.
-
-`kube-dethrottler` addresses this by monitoring normalized load averages and applying a Kubernetes taint to overloaded nodes. This action discourages the scheduler from placing new pods on them until the load subsides and the node stabilizes.
+`kube-dethrottler` prevents Kubernetes nodes from becoming overloaded by monitoring [Pressure Stall Information (PSI)](https://kubernetes.io/docs/reference/instrumentation/understand-psi-metrics/) metrics and applying taints to nodes under pressure. This discourages the scheduler from placing new pods on stressed nodes until conditions improve.
 
 ## Features
 
-- Reads 1-minute, 5-minute, and 15-minute load averages from `/proc/loadavg`.
-- Normalizes load averages by the number of CPU cores on the node.
-- Compares normalized load averages against configurable thresholds.
-- Applies a user-defined taint (key, value, effect) to the node if any threshold is exceeded.
-- Removes the taint if all load metrics fall below their thresholds and a configurable cooldown period has passed.
-- All configurations (polling interval, cooldown, thresholds, taint details) are managed via a YAML file, typically mounted as a ConfigMap.
-- Runs as a DaemonSet, ensuring it operates on each (or selected) nodes in the cluster.
-- Uses the Downward API to automatically determine the node name it's running on.
-- Graceful shutdown: attempts to remove the applied taint on termination (SIGINT, SIGTERM).
+- Monitors PSI metrics (CPU, memory, I/O) for all nodes via the kubelet Summary API.
+- Supports both "some" and "full" pressure categories with `avg10`, `avg60`, and `avg300` windows.
+- Applies a configurable taint to nodes when any threshold is exceeded.
+- Removes the taint after all metrics fall below thresholds and a cooldown period has passed.
+- Runs as a centralized Deployment (no per-node DaemonSet needed).
+- Supports leader election for high-availability deployments.
+- Filters nodes by label selector to target specific node groups.
+- Graceful shutdown: removes all applied taints on termination.
+
+## Requirements
+
+- **Kubernetes >= 1.36** (PSI metrics stable, `KubeletPSI` feature gate locked to true)
+- **cgroup v2** on all monitored nodes
+- **Linux kernel >= 4.20** with `CONFIG_PSI=y` (most modern distributions enable this by default)
 
 ## How it Works
 
-1.  **Configuration**: `kube-dethrottler` loads its settings from a YAML file specified by the `--config` flag (default: `/etc/kube-dethrottler/config.yaml`).
-2.  **Node Identification**: It automatically identifies the node it's running on using the `NODE_NAME` environment variable, typically injected via the Kubernetes Downward API.
-3.  **Load Monitoring**: At a `pollInterval` (e.g., every 10 seconds):
-    *   It reads the raw load averages (1m, 5m, 15m) from `/proc/loadavg`.
-    *   It fetches the number of CPU cores on the node.
-    *   It normalizes the raw load averages by dividing them by the CPU core count. This provides a load-per-core metric.
-4.  **Threshold Checking**: The normalized load averages are compared against `thresholds` defined in the configuration.
-    *   Each threshold ( `load1m`, `load5m`, `load15m`) can be set independently. A value of `0` for a threshold disables the check for that specific period.
-5.  **Tainting Logic**:
-    *   **Apply Taint**: If any of the active (non-zero) thresholds are exceeded by their corresponding normalized load average, and the node is not already tainted by this controller:
-        *   `kube-dethrottler` applies a taint to the node. The configurable components are the taint `key` (e.g., `kube-dethrottler/high-load`) and `effect` (e.g., `NoSchedule` and `PreferNoSchedule`). The `taintValue` is consistently applied by the controller as `high-load`.
-        *   The time of tainting is recorded.
-    *   **Maintain Taint**: If thresholds are still exceeded and the node is already tainted, the `lastTaintTime` is updated to effectively reset/extend the cooldown consideration period if the load remains high.
-    *   **Remove Taint**: If all normalized load averages are *below* their respective thresholds:
-        *   The controller checks if a `cooldownPeriod` (e.g., 5 minutes) has passed since the taint was last applied or updated.
-        *   If the cooldown period has elapsed and the node is currently tainted by this controller, the taint is removed.
-6.  **Initial State**: Upon startup, `kube-dethrottler` checks if its managed taint already exists on the node. If so, it assumes it was previously tainted (e.g., before a restart) and initializes its state accordingly, including setting `lastTaintTime` for cooldown calculations.
-7.  **Graceful Shutdown**: When receiving a SIGINT or SIGTERM signal, `kube-dethrottler` will attempt to remove its managed taint from the node before exiting.
+1. **Configuration**: Loads settings from a YAML file specified by `--config` (default: `/etc/kube-dethrottler/config.yaml`).
+2. **Node Discovery**: Lists all nodes matching the configured `nodeFilter` label selector (or all nodes if empty).
+3. **PSI Polling**: At each `pollInterval`, queries the kubelet Summary API (`/api/v1/nodes/<name>/proxy/stats/summary`) for every monitored node to retrieve node-level PSI data.
+4. **Threshold Checking**: Compares PSI values (cpu/memory/io, some/full, avg10/avg60/avg300) against configured thresholds. A threshold of `0` disables that check.
+5. **Tainting Logic**:
+   - **Apply Taint**: If any enabled threshold is exceeded and the node is not already tainted, applies the configured taint.
+   - **Extend Cooldown**: If thresholds remain exceeded on an already-tainted node, the cooldown timer resets.
+   - **Remove Taint**: If all metrics are below thresholds and the cooldown period has elapsed, removes the taint.
+6. **Leader Election**: When enabled, only the leader instance actively polls and taints. Standby replicas wait to acquire leadership.
+7. **Graceful Shutdown**: On SIGINT/SIGTERM, removes all taints applied by this instance.
 
 ## Configuration File Example
 
-A typical configuration file (`config.yaml`) would look like this:
-
 ```yaml
-# nodeName: "my-node-override" # Optional: Typically injected by Downward API (NODE_NAME env var). Used for local testing if needed.
+pollInterval: "30s"
+cooldownPeriod: "5m"
 
-pollInterval: "10s" # How often to check load averages. Recommended: 10s-30s.
-cooldownPeriod: "5m" # How long to wait after load returns to normal before removing the taint. Recommended: 5m-15m.
+taintKey: "kube-dethrottler/high-load"
+taintEffect: "NoSchedule"
 
-taintKey: "kube-dethrottler/high-load" # Taint key to apply.
-taintEffect: "NoSchedule" # Taint effect. Options: NoSchedule, PreferNoSchedule, NoExecute.
+# Only monitor worker nodes (empty = all nodes)
+nodeFilter: "node-role.kubernetes.io/worker"
 
-# Thresholds for *normalized* load averages (raw load / CPU cores).
-# A value of 0 for any threshold disables the check for that specific period.
+leaderElection:
+  enabled: true
+  leaseName: "kube-dethrottler-leader"
+  leaseNamespace: "kube-system"
+
+# PSI pressure thresholds (percentage, 0-100). 0 disables the check.
 thresholds:
-  load1m: 2.0  # Taint if 1-minute load avg per CPU core exceeds 2.0
-  load5m: 1.5  # Taint if 5-minute load avg per CPU core exceeds 1.5
-  load15m: 1.0 # Taint if 15-minute load avg per CPU core exceeds 1.0
-
-# kubeconfigPath: "/path/to/local/kubeconfig" # Optional: Path to kubeconfig for out-of-cluster development. Leave empty for in-cluster.
+  cpu:
+    some:
+      avg10: 25.0
+      avg60: 0
+      avg300: 0
+    full:
+      avg10: 10.0
+      avg60: 0
+      avg300: 0
+  memory:
+    some:
+      avg10: 20.0
+      avg60: 0
+      avg300: 0
+    full:
+      avg10: 5.0
+      avg60: 0
+      avg300: 0
+  io:
+    some:
+      avg10: 30.0
+      avg60: 0
+      avg300: 0
+    full:
+      avg10: 15.0
+      avg60: 0
+      avg300: 0
 ```
 
-**Important Notes on Thresholds:**
+**Understanding PSI Thresholds:**
 
-*   The `thresholds` are for **normalized load averages**. This means the raw load average value from `/proc/loadavg` is divided by the number of CPU cores before comparison.
-*   For example, on a 4-core node, a `thresholds.load1m: 2.0` means the node will be considered for tainting if its raw 1-minute load average reaches `2.0 * 4 = 8.0`.
-*   Setting a threshold to `0` effectively disables the check for that particular load average period (1m, 5m, or 15m).
-*   At least one threshold must be set to a nonzero value.
+- PSI values represent the percentage of wall-clock time that tasks were stalled on a resource.
+- `some`: at least one task is stalled (early indicator of contention).
+- `full`: all non-idle tasks are stalled simultaneously (severe shortage).
+- `avg10`/`avg60`/`avg300`: 10-second, 60-second, and 5-minute moving averages respectively.
+- Example: `cpu.some.avg10: 25.0` means taint the node if at least one task was CPU-stalled for more than 25% of the last 10 seconds.
 
 ## Helm Chart Installation
 
-`kube-dethrottler` is deployed as a DaemonSet using the provided Helm chart.
+`kube-dethrottler` is deployed as a Deployment using the provided Helm chart.
 
-1.  **Add Helm Repository (if applicable, or use local chart path)**:
-    ```bash
-    # helm repo add <your-repo-name> <your-repo-url>
-    # helm repo update
-    ```
+Install the chart with the release name `kube-dethrottler` into the `kube-system` namespace:
 
-2.  **Install the Chart**:
+```bash
+helm install kube-dethrottler ./charts/kube-dethrottler --namespace kube-system --create-namespace
+```
 
-    To install the chart with the release name `kube-dethrottler` into the `kube-system` namespace (recommended for system-level components):
+Customize the installation with `--set` arguments:
 
-    Using local chart directory:
-    ```bash
-    helm install kube-dethrottler ./charts/kube-dethrottler --namespace kube-system --create-namespace
-    ```
+```bash
+helm install kube-dethrottler ./charts/kube-dethrottler \
+  --namespace kube-system \
+  --create-namespace \
+  --set config.pollInterval="15s" \
+  --set config.thresholds.cpu.some.avg10=30 \
+  --set config.thresholds.memory.full.avg10=10
+```
 
-    If using a Helm repository:
-    ```bash
-    # helm install kube-dethrottler <your-repo-name>/kube-dethrottler --namespace kube-system --create-namespace
-    ```
+Refer to `charts/kube-dethrottler/values.yaml` for all configurable parameters.
 
-3.  **Configuration via Values**:
+## Architecture
 
-    You can customize the installation by providing a custom `values.yaml` file or by using `--set` arguments during installation.
-
-    Example using `--set`:
-    ```bash
-    helm install kube-dethrottler ./charts/kube-dethrottler \
-      --namespace kube-system \
-      --create-namespace \
-      --set config.pollInterval="15s" \
-      --set config.thresholds.load1m=2.5 \
-      --set config.thresholds.load5m=2.0
-    ```
-
-    Refer to the `charts/kube-dethrottler/values.yaml` file for all configurable parameters.
+```
+┌─────────────────────────────────────────────────────────────┐
+│  kube-dethrottler Deployment (with leader election)         │
+│                                                             │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  Control Loop (runs on leader only)          │           │
+│  │                                              │           │
+│  │  1. List nodes (with label filter)           │           │
+│  │  2. For each node:                           │           │
+│  │     - GET /proxy/stats/summary               │           │
+│  │     - Compare PSI values vs thresholds       │           │
+│  │     - Apply/remove taint as needed           │           │
+│  └──────────────────────────────────────────────┘           │
+└─────────────────────────────────────────────────────────────┘
+           │                              │
+           │ PSI metrics via              │ Taint/untaint
+           │ kube-apiserver proxy         │ via kube-apiserver
+           ▼                              ▼
+┌─────────────────┐            ┌─────────────────┐
+│  Node 1 kubelet │            │  Node 2 kubelet │
+└─────────────────┘            └─────────────────┘
+```
 
 ## Building from Source
-
-This section is intended for developers who wish to contribute to `kube-dethrottler`, create custom builds, or understand the build process.
 
 Prerequisites:
 * Go (version specified in `go.mod`)
@@ -122,9 +149,9 @@ Key Makefile targets:
 * `make test`: Runs unit tests.
 * `make lint`: Runs linters.
 * `make docker-build`: Builds the Docker image.
-* `make docker-push`: Pushes the Docker image (ensure `IMAGE_NAME` and `IMAGE_TAG` are set).
+* `make docker-push`: Pushes the Docker image.
 * `make helm-install`: Installs the Helm chart from the local `./charts` directory.
 
 ## License
 
-Apache License 2.0 
+Apache License 2.0
