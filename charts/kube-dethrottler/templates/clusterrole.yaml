@@ -7,10 +7,16 @@ metadata:
   labels:
     {{- include "kube-dethrottler.labels" . | nindent 4 }}
 rules:
-  - apiGroups: [""] # core API group
+  - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["get", "list", "watch", "patch", "update"]
   - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
+  - apiGroups: [""]
     resources: ["nodes/status"]
-    verbs: ["patch", "update"] # To update taints which are part of node status in some views
-{{- end -}} 
+    verbs: ["patch", "update"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
+{{- end -}}

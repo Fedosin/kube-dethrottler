@@ -7,8 +7,8 @@ on:
     branches: [ main, master ]
 
 env:
-  GO_VERSION: '1.22'
-  GOLANGCI_LINT_VERSION: 'v2.1.6'
+  GO_VERSION: '1.26'
+  GOLANGCI_LINT_VERSION: 'v2.12.2'
 
 jobs:
   lint:
@@ -47,7 +47,7 @@ jobs:
     - name: Upload coverage reports
       uses: codecov/codecov-action@v5
       with:
-        file: ./coverage.out
+        files: ./coverage.out
         flags: unittests
         name: codecov-umbrella
 

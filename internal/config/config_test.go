@@ -6,47 +6,28 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 func TestLoadConfig_Defaults(t *testing.T) {
 	tempDir := t.TempDir()
 	configFile := filepath.Join(tempDir, "config.yaml")
 
-	// Create a config file with thresholds to test defaults
 	configData := []byte(`thresholds:
-  load1m: 2.0
-  load5m: 1.5
-  load15m: 1.0`)
+  cpu:
+    some:
+      avg10: 25.0
+`)
 	if err := os.WriteFile(configFile, configData, 0o600); err != nil {
 		t.Fatalf("Failed to write temp config file: %v", err)
 	}
-
-	// Set NODE_NAME env var for default node name
-	testNodeName := "test-node-from-env"
-	originalNodeName := os.Getenv("NODE_NAME")
-	err := os.Setenv("NODE_NAME", testNodeName)
-	if err != nil {
-		t.Fatalf("Failed to set NODE_NAME env var: %v", err)
-	}
-	defer func() {
-		errSetEnv := os.Setenv("NODE_NAME", originalNodeName)
-		if errSetEnv != nil {
-			t.Fatalf("Failed to restore NODE_NAME env var: %v", errSetEnv)
-		}
-	}()
 
 	cfg, err := LoadConfig(configFile)
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v, wantErr false", err)
 	}
 
-	if cfg.NodeName != testNodeName {
-		t.Errorf("cfg.NodeName = %v, want %v", cfg.NodeName, testNodeName)
-	}
-	if cfg.PollInterval != 10*time.Second {
-		t.Errorf("cfg.PollInterval = %v, want %v", cfg.PollInterval, 10*time.Second)
+	if cfg.PollInterval != 30*time.Second {
+		t.Errorf("cfg.PollInterval = %v, want %v", cfg.PollInterval, 30*time.Second)
 	}
 	if cfg.CooldownPeriod != 5*time.Minute {
 		t.Errorf("cfg.CooldownPeriod = %v, want %v", cfg.CooldownPeriod, 5*time.Minute)
@@ -57,8 +38,8 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.TaintEffect != "NoSchedule" {
 		t.Errorf("cfg.TaintEffect = %v, want %v", cfg.TaintEffect, "NoSchedule")
 	}
-	if cfg.ConfigFilePath != configFile {
-		t.Errorf("cfg.ConfigFilePath = %v, want %v", cfg.ConfigFilePath, configFile)
+	if cfg.LeaderElection.LeaseName != "kube-dethrottler-leader" {
+		t.Errorf("cfg.LeaderElection.LeaseName = %v, want %v", cfg.LeaderElection.LeaseName, "kube-dethrottler-leader")
 	}
 }
 
@@ -66,27 +47,32 @@ func TestLoadConfig_CustomValues(t *testing.T) {
 	tempDir := t.TempDir()
 	configFile := filepath.Join(tempDir, "custom_config.yaml")
 
-	customData := &Config{
-		NodeName:       "custom-node",
-		PollInterval:   30 * time.Second,
-		CooldownPeriod: 10 * time.Minute,
-		TaintKey:       "custom/taint",
-		TaintEffect:    "PreferNoSchedule",
-		Thresholds: Thresholds{
-			Load1m:  1.5,
-			Load5m:  1.0,
-			Load15m: 0.5,
-		},
-		KubeconfigPath: "/tmp/kubeconfig",
-	}
-
-	yamlData, err := yaml.Marshal(customData)
-	if err != nil {
-		t.Fatalf("Failed to marshal custom config: %v", err)
-	}
-
-	if err = os.WriteFile(configFile, yamlData, 0o600); err != nil {
-		t.Fatalf("Failed to write temp custom config file: %v", err)
+	configData := []byte(`pollInterval: "15s"
+cooldownPeriod: "10m"
+taintKey: "custom/taint"
+taintEffect: "PreferNoSchedule"
+nodeFilter: "node-role.kubernetes.io/worker"
+kubeconfigPath: "/tmp/kubeconfig"
+leaderElection:
+  enabled: true
+  leaseName: "custom-lease"
+  leaseNamespace: "default"
+thresholds:
+  cpu:
+    some:
+      avg10: 30.0
+      avg60: 20.0
+    full:
+      avg10: 15.0
+  memory:
+    some:
+      avg10: 25.0
+  io:
+    full:
+      avg300: 10.0
+`)
+	if err := os.WriteFile(configFile, configData, 0o600); err != nil {
+		t.Fatalf("Failed to write temp config file: %v", err)
 	}
 
 	cfg, err := LoadConfig(configFile)
@@ -94,32 +80,44 @@ func TestLoadConfig_CustomValues(t *testing.T) {
 		t.Fatalf("LoadConfig() error = %v, wantErr false", err)
 	}
 
-	if cfg.NodeName != customData.NodeName {
-		t.Errorf("cfg.NodeName = %v, want %v", cfg.NodeName, customData.NodeName)
+	if cfg.PollInterval != 15*time.Second {
+		t.Errorf("cfg.PollInterval = %v, want %v", cfg.PollInterval, 15*time.Second)
 	}
-	if cfg.PollInterval != customData.PollInterval {
-		t.Errorf("cfg.PollInterval = %v, want %v", cfg.PollInterval, customData.PollInterval)
+	if cfg.CooldownPeriod != 10*time.Minute {
+		t.Errorf("cfg.CooldownPeriod = %v, want %v", cfg.CooldownPeriod, 10*time.Minute)
 	}
-	if cfg.CooldownPeriod != customData.CooldownPeriod {
-		t.Errorf("cfg.CooldownPeriod = %v, want %v", cfg.CooldownPeriod, customData.CooldownPeriod)
+	if cfg.TaintKey != "custom/taint" {
+		t.Errorf("cfg.TaintKey = %v, want %v", cfg.TaintKey, "custom/taint")
 	}
-	if cfg.TaintKey != customData.TaintKey {
-		t.Errorf("cfg.TaintKey = %v, want %v", cfg.TaintKey, customData.TaintKey)
+	if cfg.TaintEffect != "PreferNoSchedule" {
+		t.Errorf("cfg.TaintEffect = %v, want %v", cfg.TaintEffect, "PreferNoSchedule")
 	}
-	if cfg.TaintEffect != customData.TaintEffect {
-		t.Errorf("cfg.TaintEffect = %v, want %v", cfg.TaintEffect, customData.TaintEffect)
+	if cfg.NodeFilter != "node-role.kubernetes.io/worker" {
+		t.Errorf("cfg.NodeFilter = %v, want %v", cfg.NodeFilter, "node-role.kubernetes.io/worker")
 	}
-	if cfg.Thresholds.Load1m != customData.Thresholds.Load1m {
-		t.Errorf("cfg.Thresholds.Load1m = %v, want %v", cfg.Thresholds.Load1m, customData.Thresholds.Load1m)
+	if cfg.KubeconfigPath != "/tmp/kubeconfig" {
+		t.Errorf("cfg.KubeconfigPath = %v, want %v", cfg.KubeconfigPath, "/tmp/kubeconfig")
 	}
-	if cfg.Thresholds.Load5m != customData.Thresholds.Load5m {
-		t.Errorf("cfg.Thresholds.Load5m = %v, want %v", cfg.Thresholds.Load5m, customData.Thresholds.Load5m)
+	if cfg.LeaderElection.Enabled != true {
+		t.Error("cfg.LeaderElection.Enabled should be true")
 	}
-	if cfg.Thresholds.Load15m != customData.Thresholds.Load15m {
-		t.Errorf("cfg.Thresholds.Load15m = %v, want %v", cfg.Thresholds.Load15m, customData.Thresholds.Load15m)
+	if cfg.LeaderElection.LeaseName != "custom-lease" {
+		t.Errorf("cfg.LeaderElection.LeaseName = %v, want %v", cfg.LeaderElection.LeaseName, "custom-lease")
 	}
-	if cfg.KubeconfigPath != customData.KubeconfigPath {
-		t.Errorf("cfg.KubeconfigPath = %v, want %v", cfg.KubeconfigPath, customData.KubeconfigPath)
+	if cfg.Thresholds.CPU.Some.Avg10 != 30.0 {
+		t.Errorf("cfg.Thresholds.CPU.Some.Avg10 = %v, want %v", cfg.Thresholds.CPU.Some.Avg10, 30.0)
+	}
+	if cfg.Thresholds.CPU.Some.Avg60 != 20.0 {
+		t.Errorf("cfg.Thresholds.CPU.Some.Avg60 = %v, want %v", cfg.Thresholds.CPU.Some.Avg60, 20.0)
+	}
+	if cfg.Thresholds.CPU.Full.Avg10 != 15.0 {
+		t.Errorf("cfg.Thresholds.CPU.Full.Avg10 = %v, want %v", cfg.Thresholds.CPU.Full.Avg10, 15.0)
+	}
+	if cfg.Thresholds.Memory.Some.Avg10 != 25.0 {
+		t.Errorf("cfg.Thresholds.Memory.Some.Avg10 = %v, want %v", cfg.Thresholds.Memory.Some.Avg10, 25.0)
+	}
+	if cfg.Thresholds.IO.Full.Avg300 != 10.0 {
+		t.Errorf("cfg.Thresholds.IO.Full.Avg300 = %v, want %v", cfg.Thresholds.IO.Full.Avg300, 10.0)
 	}
 }
 
@@ -155,14 +153,12 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "valid config",
 			config: Config{
-				PollInterval:   10 * time.Second,
+				PollInterval:   30 * time.Second,
 				CooldownPeriod: 5 * time.Minute,
 				TaintKey:       "test/taint",
 				TaintEffect:    "NoSchedule",
-				Thresholds: Thresholds{
-					Load1m:  2.0,
-					Load5m:  1.5,
-					Load15m: 1.0,
+				Thresholds: PSIThresholds{
+					CPU: PSIPressure{Some: PSIAverages{Avg10: 25.0}},
 				},
 			},
 			wantErr: false,
@@ -173,7 +169,7 @@ func TestConfig_Validate(t *testing.T) {
 				PollInterval:   500 * time.Millisecond,
 				CooldownPeriod: 5 * time.Minute,
 				TaintEffect:    "NoSchedule",
-				Thresholds:     Thresholds{Load1m: 1.0},
+				Thresholds:     PSIThresholds{CPU: PSIPressure{Some: PSIAverages{Avg10: 10.0}}},
 			},
 			wantErr: true,
 			errMsg:  "pollInterval must be at least 1 second",
@@ -184,7 +180,7 @@ func TestConfig_Validate(t *testing.T) {
 				PollInterval:   10 * time.Minute,
 				CooldownPeriod: 15 * time.Minute,
 				TaintEffect:    "NoSchedule",
-				Thresholds:     Thresholds{Load1m: 1.0},
+				Thresholds:     PSIThresholds{CPU: PSIPressure{Some: PSIAverages{Avg10: 10.0}}},
 			},
 			wantErr: true,
 			errMsg:  "pollInterval should not exceed 5 minutes",
@@ -195,7 +191,7 @@ func TestConfig_Validate(t *testing.T) {
 				PollInterval:   30 * time.Second,
 				CooldownPeriod: 10 * time.Second,
 				TaintEffect:    "NoSchedule",
-				Thresholds:     Thresholds{Load1m: 1.0},
+				Thresholds:     PSIThresholds{CPU: PSIPressure{Some: PSIAverages{Avg10: 10.0}}},
 			},
 			wantErr: true,
 			errMsg:  "cooldownPeriod",
@@ -203,35 +199,46 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "invalid taint effect",
 			config: Config{
-				PollInterval:   10 * time.Second,
+				PollInterval:   30 * time.Second,
 				CooldownPeriod: 5 * time.Minute,
 				TaintEffect:    "InvalidEffect",
-				Thresholds:     Thresholds{Load1m: 1.0},
+				Thresholds:     PSIThresholds{CPU: PSIPressure{Some: PSIAverages{Avg10: 10.0}}},
 			},
 			wantErr: true,
 			errMsg:  "invalid taintEffect",
 		},
 		{
-			name: "negative threshold",
+			name: "threshold above 100",
 			config: Config{
-				PollInterval:   10 * time.Second,
+				PollInterval:   30 * time.Second,
 				CooldownPeriod: 5 * time.Minute,
 				TaintEffect:    "NoSchedule",
-				Thresholds:     Thresholds{Load1m: -1.0},
+				Thresholds:     PSIThresholds{CPU: PSIPressure{Some: PSIAverages{Avg10: 150.0}}},
 			},
 			wantErr: true,
-			errMsg:  "load thresholds cannot be negative",
+			errMsg:  "must be between 0 and 100",
+		},
+		{
+			name: "negative threshold",
+			config: Config{
+				PollInterval:   30 * time.Second,
+				CooldownPeriod: 5 * time.Minute,
+				TaintEffect:    "NoSchedule",
+				Thresholds:     PSIThresholds{Memory: PSIPressure{Full: PSIAverages{Avg10: -5.0}}},
+			},
+			wantErr: true,
+			errMsg:  "must be between 0 and 100",
 		},
 		{
 			name: "all thresholds disabled",
 			config: Config{
-				PollInterval:   10 * time.Second,
+				PollInterval:   30 * time.Second,
 				CooldownPeriod: 5 * time.Minute,
 				TaintEffect:    "NoSchedule",
-				Thresholds:     Thresholds{Load1m: 0, Load5m: 0, Load15m: 0},
+				Thresholds:     PSIThresholds{},
 			},
 			wantErr: true,
-			errMsg:  "at least one load threshold must be set",
+			errMsg:  "at least one PSI threshold must be set",
 		},
 	}
 

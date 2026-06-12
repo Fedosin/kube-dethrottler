@@ -10,38 +10,59 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Thresholds defines the load average limits.
-// A value of 0 for any threshold disables the check for that specific period.
-type Thresholds struct {
-	Load1m  float64 `yaml:"load1m"`
-	Load5m  float64 `yaml:"load5m"`
-	Load15m float64 `yaml:"load15m"`
+// PSIAverages defines thresholds for the three PSI averaging windows.
+// A value of 0 disables the check for that window.
+type PSIAverages struct {
+	Avg10  float64 `yaml:"avg10"`
+	Avg60  float64 `yaml:"avg60"`
+	Avg300 float64 `yaml:"avg300"`
+}
+
+// PSIPressure defines thresholds for "some" and "full" pressure categories.
+type PSIPressure struct {
+	Some PSIAverages `yaml:"some"`
+	Full PSIAverages `yaml:"full"`
+}
+
+// PSIThresholds defines pressure thresholds for CPU, memory, and I/O.
+type PSIThresholds struct {
+	CPU    PSIPressure `yaml:"cpu"`
+	Memory PSIPressure `yaml:"memory"`
+	IO     PSIPressure `yaml:"io"`
+}
+
+// LeaderElection holds leader election configuration.
+type LeaderElection struct {
+	LeaseName      string        `yaml:"leaseName"`
+	LeaseNamespace string        `yaml:"leaseNamespace"`
+	LeaseDuration  time.Duration `yaml:"leaseDuration"`
+	RenewDeadline  time.Duration `yaml:"renewDeadline"`
+	RetryPeriod    time.Duration `yaml:"retryPeriod"`
+	Enabled        bool          `yaml:"enabled"`
 }
 
 // Config holds the application configuration.
 type Config struct {
-	NodeName       string        `yaml:"nodeName"`
-	TaintKey       string        `yaml:"taintKey"`
-	TaintEffect    string        `yaml:"taintEffect"`
-	KubeconfigPath string        `yaml:"kubeconfigPath"`
-	ConfigFilePath string        `yaml:"configFilePath"`
-	Thresholds     Thresholds    `yaml:"thresholds"`
-	PollInterval   time.Duration `yaml:"pollInterval"`
-	CooldownPeriod time.Duration `yaml:"cooldownPeriod"`
+	TaintKey       string         `yaml:"taintKey"`
+	TaintEffect    string         `yaml:"taintEffect"`
+	KubeconfigPath string         `yaml:"kubeconfigPath"`
+	ConfigFilePath string         `yaml:"-"`
+	NodeFilter     string         `yaml:"nodeFilter"`
+	LeaderElection LeaderElection `yaml:"leaderElection"`
+	PollInterval   time.Duration  `yaml:"pollInterval"`
+	CooldownPeriod time.Duration  `yaml:"cooldownPeriod"`
+	Thresholds     PSIThresholds  `yaml:"thresholds"`
 }
 
 // LoadConfig reads the YAML configuration file and returns a Config struct.
 func LoadConfig(configPath string) (*Config, error) {
-	// Sanitize and validate the config path
 	cleanPath := filepath.Clean(configPath)
 
-	// Ensure the path is absolute
 	absPath, err := filepath.Abs(cleanPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve config path: %w", err)
 	}
 
-	// Check if the file exists and is a regular file
 	fileInfo, err := os.Stat(absPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to access config file: %w", err)
@@ -50,7 +71,6 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("config path is a directory, not a file: %s", absPath)
 	}
 
-	// Validate file extension
 	if !strings.HasSuffix(strings.ToLower(absPath), ".yaml") && !strings.HasSuffix(strings.ToLower(absPath), ".yml") {
 		return nil, fmt.Errorf("config file must have .yaml or .yml extension: %s", absPath)
 	}
@@ -67,29 +87,9 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, err
 	}
 
-	// Set default values if not provided
-	if cfg.PollInterval == 0 {
-		cfg.PollInterval = 10 * time.Second // Default poll interval
-	}
-	if cfg.CooldownPeriod == 0 {
-		cfg.CooldownPeriod = 5 * time.Minute // Default cooldown period
-	}
-	if cfg.TaintKey == "" {
-		cfg.TaintKey = "kube-dethrottler/high-load"
-	}
-	if cfg.TaintEffect == "" {
-		cfg.TaintEffect = "NoSchedule" // Default TaintEffect
-	}
-	cfg.ConfigFilePath = absPath // Store the path for reference
+	cfg.setDefaults()
+	cfg.ConfigFilePath = absPath
 
-	// NodeName will be typically set via downward API in a K8s environment
-	// but can be overridden in config for local testing.
-	if cfg.NodeName == "" {
-		// Attempt to get node name from environment if not in config (common for downward API)
-		cfg.NodeName = os.Getenv("NODE_NAME")
-	}
-
-	// Validate the configuration
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
@@ -97,9 +97,41 @@ func LoadConfig(configPath string) (*Config, error) {
 	return &cfg, nil
 }
 
+func (c *Config) setDefaults() {
+	if c.PollInterval == 0 {
+		c.PollInterval = 30 * time.Second
+	}
+	if c.CooldownPeriod == 0 {
+		c.CooldownPeriod = 5 * time.Minute
+	}
+	if c.TaintKey == "" {
+		c.TaintKey = "kube-dethrottler/high-load"
+	}
+	if c.TaintEffect == "" {
+		c.TaintEffect = "NoSchedule"
+	}
+	if c.LeaderElection.LeaseName == "" {
+		c.LeaderElection.LeaseName = "kube-dethrottler-leader"
+	}
+	if c.LeaderElection.LeaseNamespace == "" {
+		c.LeaderElection.LeaseNamespace = os.Getenv("POD_NAMESPACE")
+		if c.LeaderElection.LeaseNamespace == "" {
+			c.LeaderElection.LeaseNamespace = "kube-system"
+		}
+	}
+	if c.LeaderElection.LeaseDuration == 0 {
+		c.LeaderElection.LeaseDuration = 15 * time.Second
+	}
+	if c.LeaderElection.RenewDeadline == 0 {
+		c.LeaderElection.RenewDeadline = 10 * time.Second
+	}
+	if c.LeaderElection.RetryPeriod == 0 {
+		c.LeaderElection.RetryPeriod = 2 * time.Second
+	}
+}
+
 // Validate checks if the configuration is valid.
 func (c *Config) Validate() error {
-	// Validate poll interval
 	if c.PollInterval < 1*time.Second {
 		return fmt.Errorf("pollInterval must be at least 1 second, got %s", c.PollInterval)
 	}
@@ -107,12 +139,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("pollInterval should not exceed 5 minutes, got %s", c.PollInterval)
 	}
 
-	// Validate cooldown period
 	if c.CooldownPeriod < c.PollInterval {
 		return fmt.Errorf("cooldownPeriod (%s) must be greater than pollInterval (%s)", c.CooldownPeriod, c.PollInterval)
 	}
 
-	// Validate taint effect
 	validEffects := map[string]bool{
 		"NoSchedule":       true,
 		"PreferNoSchedule": true,
@@ -122,15 +152,54 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid taintEffect: %s. Must be one of: NoSchedule, PreferNoSchedule, NoExecute", c.TaintEffect)
 	}
 
-	// Validate thresholds
-	if c.Thresholds.Load1m < 0 || c.Thresholds.Load5m < 0 || c.Thresholds.Load15m < 0 {
-		return fmt.Errorf("load thresholds cannot be negative")
+	if err := validatePSIAverages(c.Thresholds.CPU.Some, "cpu.some"); err != nil {
+		return err
+	}
+	if err := validatePSIAverages(c.Thresholds.CPU.Full, "cpu.full"); err != nil {
+		return err
+	}
+	if err := validatePSIAverages(c.Thresholds.Memory.Some, "memory.some"); err != nil {
+		return err
+	}
+	if err := validatePSIAverages(c.Thresholds.Memory.Full, "memory.full"); err != nil {
+		return err
+	}
+	if err := validatePSIAverages(c.Thresholds.IO.Some, "io.some"); err != nil {
+		return err
+	}
+	if err := validatePSIAverages(c.Thresholds.IO.Full, "io.full"); err != nil {
+		return err
 	}
 
-	// Warn if all thresholds are disabled
-	if c.Thresholds.Load1m == 0 && c.Thresholds.Load5m == 0 && c.Thresholds.Load15m == 0 {
-		return fmt.Errorf("at least one load threshold must be set (non-zero)")
+	if !c.hasAnyThreshold() {
+		return fmt.Errorf("at least one PSI threshold must be set (non-zero)")
 	}
 
 	return nil
+}
+
+func validatePSIAverages(a PSIAverages, prefix string) error {
+	if a.Avg10 < 0 || a.Avg10 > 100 {
+		return fmt.Errorf("%s.avg10 must be between 0 and 100, got %.2f", prefix, a.Avg10)
+	}
+	if a.Avg60 < 0 || a.Avg60 > 100 {
+		return fmt.Errorf("%s.avg60 must be between 0 and 100, got %.2f", prefix, a.Avg60)
+	}
+	if a.Avg300 < 0 || a.Avg300 > 100 {
+		return fmt.Errorf("%s.avg300 must be between 0 and 100, got %.2f", prefix, a.Avg300)
+	}
+	return nil
+}
+
+func (c *Config) hasAnyThreshold() bool {
+	return hasAnyAvg(c.Thresholds.CPU.Some) ||
+		hasAnyAvg(c.Thresholds.CPU.Full) ||
+		hasAnyAvg(c.Thresholds.Memory.Some) ||
+		hasAnyAvg(c.Thresholds.Memory.Full) ||
+		hasAnyAvg(c.Thresholds.IO.Some) ||
+		hasAnyAvg(c.Thresholds.IO.Full)
+}
+
+func hasAnyAvg(a PSIAverages) bool {
+	return a.Avg10 > 0 || a.Avg60 > 0 || a.Avg300 > 0
 }
