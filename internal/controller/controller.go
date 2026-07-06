@@ -21,11 +21,12 @@ type nodeState struct {
 // Controller manages the main loop of fetching PSI metrics, checking thresholds,
 // and tainting overloaded nodes.
 type Controller struct {
-	kubeClient kubernetes.KubeClientInterface
-	psiFetcher *psi.Fetcher
-	config     *config.Config
-	logger     *log.Logger
-	nodes      map[string]*nodeState
+	kubeClient   kubernetes.KubeClientInterface
+	psiFetcher   *psi.Fetcher
+	psiFetchFunc func(ctx context.Context, nodeName string) (*psi.NodePSI, error)
+	config       *config.Config
+	logger       *log.Logger
+	nodes        map[string]*nodeState
 }
 
 // NewController creates a new Controller instance.
@@ -123,7 +124,11 @@ func (c *Controller) checkNode(ctx context.Context, nodeName string) {
 		c.nodes[nodeName] = state
 	}
 
-	nodePSI, err := c.psiFetcher.FetchNodePSI(ctx, nodeName)
+	fetchFn := c.psiFetcher.FetchNodePSI
+	if c.psiFetchFunc != nil {
+		fetchFn = c.psiFetchFunc
+	}
+	nodePSI, err := fetchFn(ctx, nodeName)
 	if err != nil {
 		c.logger.Printf("Error fetching PSI for node %s: %v", nodeName, err)
 		return
