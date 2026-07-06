@@ -26,10 +26,18 @@ clean: ## Clean up build artifacts
 	@echo "Cleaning up build artifacts"
 	$(GO_CLEAN)
 	rm -f $(BIN_PATH)/$(BINARY_NAME)
+	rm -f coverage.out coverage.html
 
 test: ## Run unit tests
 	@echo "Running unit tests"
-	$(GO_TEST) -v ./...
+	$(GO_TEST) -v -race -coverprofile=coverage.out ./...
+
+test-coverage: ## Run tests and display coverage report
+	@echo "Running tests with coverage"
+	$(GO_TEST) -v -race -coverprofile=coverage.out ./...
+	$(GO_CMD) tool cover -func=coverage.out
+	$(GO_CMD) tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report written to coverage.html"
 
 lint: ## Run linters
 	@echo "Running linters"
@@ -62,7 +70,7 @@ helm-uninstall: ## Uninstall Helm release
 e2e: ## Placeholder for end-to-end tests
 	@echo "End-to-end tests are not yet implemented. Please configure Kind/Minikube and test scripts."
 
-.PHONY: all build clean test lint docker-build docker-push helm-install helm-upgrade helm-uninstall e2e
+.PHONY: all build clean test test-coverage lint docker-build docker-push helm-install helm-upgrade helm-uninstall e2e
 
 help: ## Display this help screen
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}' 
